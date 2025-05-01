@@ -24,6 +24,21 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+struct child_process {
+   int pid;
+   int load;
+   int exit_status;
+
+   bool wait;
+   bool exit;
+
+   struct semaphore load_sema;
+   struct semaphore exit_sema;
+
+   struct list_elem elem; // list element for child process list 
+
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -100,6 +115,22 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+
+    //locks current thread is holding
+    struct list lock_list; // list of locks
+
+    //file system syscall and list of files accessed for this thread
+    struct list file_list; // list of files
+    int fd; // file descriptor
+
+    //child list processes for this thread
+    struct list child_list;
+    tid_t parent_tid; // parent thread id
+
+    //strcut child process
+    struct child_process *cp;
+
+    struct file *executable; // used to deny writes to executable file
   };
 
 /* If false (default), use round-robin scheduler.

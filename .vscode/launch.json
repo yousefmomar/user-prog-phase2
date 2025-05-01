@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/yousefmahmoud/Desktop/Studying/OS/Projects/Phase_II/CSEx61-dockerized-pintos/user-prog-phase2/src/userprog",
+      "program": "/Users/yousefmahmoud/Desktop/Studying/OS/Projects/Phase_II/CSEx61-dockerized-pintos/user-prog-phase2/src/userprog/build/Debug/outDebug"
+    }
+  ]
+}
