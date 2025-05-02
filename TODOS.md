@@ -4,7 +4,7 @@ This document tracks progress on implementing 13 system calls and their integrat
 
 ## 🛠️ TODO
 
-- [ ] **Memory Verification**
+- [X] **Memory Verification**
   - Implement `verify_str`, `verify_ptr`, `conv_addr`, and check for the converted address.
 
 - [ ] **File System Calls**
