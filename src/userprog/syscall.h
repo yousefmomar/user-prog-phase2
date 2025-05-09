@@ -10,4 +10,6 @@ static void verify_ptr(const void*vaddr);
 static void verify_str_addr(const void*str);
 static void verify_buffer(void* buffer,int size_buffer);
 
+struct lock file_system_lock;
+
 #endif /* userprog/syscall.h */
