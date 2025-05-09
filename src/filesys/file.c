@@ -166,3 +166,41 @@ file_tell (struct file *file)
   ASSERT (file != NULL);
   return file->pos;
 }
+
+static int
+sys_write(int fd, const void *buffer, unsigned size)
+{
+    struct thread *cur = thread_current();
+    struct file *file = NULL;
+    int bytes_written = -1;
+
+    /* Handle standard file descriptors (no lock needed for console) */
+    switch (fd) {
+        case STDOUT_FILENO:
+        case STDERR_FILENO:
+            putbuf(buffer, size);
+            return size;
+        case STDIN_FILENO:
+            return -1;  // Can't write to stdin
+    }
+
+    /* Search for the file descriptor in thread's file_list */
+    struct list_elem *e;
+    for (e = list_begin(&cur->file_list); e != list_end(&cur->file_list); 
+         e = list_next(e)) {
+        struct file_descriptor *fdesc = list_entry(e, struct file_descriptor, elem);
+        if (fdesc->fd == fd) {
+            file = fdesc->file;
+            break;
+        }
+    }
+
+    /* Perform the write with filesystem lock */
+    if (file != NULL && !file->deny_write) {
+        lock_acquire(&filesys_lock);
+        bytes_written = file_write(file, buffer, size);
+        lock_release(&filesys_lock);
+    }
+
+    return bytes_written;
+}

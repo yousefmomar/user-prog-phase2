@@ -4,6 +4,8 @@
 #include <vaddr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
+#include "filesys/file.h"
 
 
 void
@@ -88,7 +90,18 @@ syscall_handler (struct intr_frame *f UNUSED)
     case 3:
     load_args(f,arg,3);
     switch(syscall_code){
-
+      case SYS_WRITE: {
+        /* Get and verify arguments */
+        int fd = arg[0];
+        void *buffer = (void *)arg[1];
+        unsigned size = (unsigned)arg[2];
+        
+        verify_buffer(buffer, size);  // Validate user buffer
+        
+        /* Perform the write */
+        f->eax = sys_write(fd, buffer, size);
+        break;
+    }
 
     }
     break;
@@ -173,4 +186,35 @@ static void verify_buffer(void* buffer,int size_buffer){
     i++;
   }
 
+}
+
+
+static int
+sys_write(int fd, const void *buffer, unsigned size)
+{
+    struct thread *cur = thread_current();
+    int bytes_written = -1;
+
+    /* Handle console output first */
+    if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
+        putbuf(buffer, size);
+        return size;
+    }
+    if (fd == STDIN_FILENO) return -1;
+
+    /* Find the file descriptor */
+    struct list_elem *e;
+    for (e = list_begin(&cur->file_list); e != list_end(&cur->file_list);
+         e = list_next(e)) {
+        struct file_descriptor *fdesc = list_entry(e, struct file_descriptor, elem);
+        if (fdesc->fd == fd) {
+            /* Perform the write with locking */
+            lock_acquire(&file_system_lock);
+            bytes_written = file_write(fdesc->file, buffer, size);
+            lock_release(&file_system_lock);
+            break;
+        }
+    }
+
+    return bytes_written;
 }

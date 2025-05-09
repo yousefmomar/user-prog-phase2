@@ -492,6 +492,10 @@ init_thread(struct thread *t, const char *name, int priority)
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);
 	intr_set_level(old_level);
+
+
+	list_init(&t->file_list);
+    t->next_fd = 3;  // Start after stdio descriptors
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
