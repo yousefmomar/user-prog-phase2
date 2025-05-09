@@ -103,6 +103,7 @@ start_process(void *file_name_)
 /////////////////////////////////////////////
 //////////========= NEW ==========///////////
 /////////////////////////////////////////////
+
 /* List to keep track of all child processes created by the current process */
 static struct list child_list;
 
@@ -160,6 +161,30 @@ void update_child_exit_status(tid_t child_tid, int exit_code)
 		cp->exit = true;			 // Mark as exited
 		sema_up(&cp->exit_sema);	 // Wake up waiting parent if any
 	}
+}
+
+/* Check if a given thread ID represents a child process of the current process
+	Returns true if the thread ID belongs to a direct child of the current process,
+	false otherwise. */
+static bool is_child_process(struct thread *parent, tid_t child_tid)
+{
+	struct list_elem *e;
+
+	/* Iterate through each element in the child_list */
+	for (e = list_begin(&child_list); e != list_end(&child_list); e = list_next(e))
+	{
+		/* Get the child_process structure from the list element */
+		struct child_process *cp = list_entry(e, struct child_process, elem);
+
+		/* Check if this child's process ID matches the one we're looking for */
+		if (cp->pid == child_tid)
+		{
+			return true; /* Found a matching child process */
+		}
+	}
+
+	/* No matching child process was found */
+	return false;
 }
 
 /* Wait for a child process to exit and retrieve its exit status

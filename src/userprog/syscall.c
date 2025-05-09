@@ -59,6 +59,23 @@ syscall_handler (struct intr_frame *f UNUSED)
     case 1:
     load_args(f,arg,1);
     switch(syscall_code){
+    /////////////////==== NEW ===////////////////////
+      case SYS_WAIT:
+    {
+      // Get child process ID from the first argument passed to syscall
+      // arg[0] contains the PID of the child process to wait for
+      int pid = arg[0];
+      
+      // Call process_wait() with the child PID
+      // process_wait() will:
+      // 1. Block the current process until specified child terminates
+      // 2. Return the child's exit status
+      // 3. Return -1 if the child was already waited on or if pid is invalid
+      // Store the return value in eax register which holds syscall return values
+      f->eax = process_wait(pid);
+      break;
+    }
+    /////////////////==== NEW ===////////////////////
       
     }
     break;
@@ -92,7 +109,7 @@ conv_vaddr_to_physaddr(const void *vaddr)
 {
     verify_ptr(vaddr);
 
-    void *ptr= pagedir_get_page(thread_currrent()->pagedir,vaddr);
+    void *ptr = pagedir_get_page(thread_current()->pagedir, vaddr);
     if(ptr==NULL){
       exit(-1);
     } else{
