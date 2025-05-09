@@ -41,13 +41,12 @@ static int syscall_num_args(int syscall_code){
 void close (int fd)
 {
   struct file *f = thread_current()->file_list[fd];
-  if (f != NULL)
-    {
+  
       lock_acquire(&file_system_lock);
       file_close(f);
       lock_release(&file_system_lock);
       thread_current()->file_list[fd] = NULL;
-    }
+
 }
 
 bool create (const char *file,unsigned initial_size)
@@ -81,6 +80,17 @@ int read (int fd, void *buffer, unsigned size){
   }
 }
 
+int filesize(int fd)
+{
+  struct file *f = thread_current()->file_list[fd];
+ 
+  lock_acquire(&file_system_lock);
+  int size = file_length(f);
+  lock_release(&file_system_lock);
+
+  return size;
+}
+
 /**
  * @brief implement all 13 syscalls here 
  * 
@@ -108,6 +118,13 @@ syscall_handler (struct intr_frame *f UNUSED)
         {
           int file_descriptor= conv_vaddr_to_physaddr((const void*)arg[0]);
           close(file_descriptor);
+          break;
+        }
+
+      case SYS_FILESIZE:
+        {
+          int fd=conv_vaddr_to_physaddr((const void*)arg[0]);
+          f->eax=filesize(fd);
           break;
         }
         
