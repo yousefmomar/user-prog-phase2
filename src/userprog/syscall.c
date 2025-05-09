@@ -54,6 +54,28 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   /* 13 system calls handling*/
 
+  switch(num_args){
+    case 1:
+    load_args(f,arg,1);
+    switch(syscall_code){
+      
+    }
+    break;
+    case 2:
+    load_args(f,arg,2);
+    switch(syscall_code){
+
+    }
+    break;
+    case 3:
+    load_args(f,arg,3);
+    switch(syscall_code){
+
+
+    }
+    break;
+  }
+
   printf ("system call!\n");
   thread_exit ();
 }
