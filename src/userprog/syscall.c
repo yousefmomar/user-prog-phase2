@@ -1,5 +1,7 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include "../filesys/file.h"
+#include "../filesys/filesys.h"
 #include <syscall-nr.h>
 #include <vaddr.h>
 #include "threads/interrupt.h"
@@ -36,6 +38,59 @@ static int syscall_num_args(int syscall_code){
 }
 
 
+void close (int fd)
+{
+  struct file *f = thread_current()->file_list[fd];
+  
+      lock_acquire(&file_system_lock);
+      file_close(f);
+      lock_release(&file_system_lock);
+      thread_current()->file_list[fd] = NULL;
+
+}
+
+bool create (const char *file,unsigned initial_size)
+{
+  lock_acquire(&file_system_lock);
+  bool successful = filesys_create(file, initial_size); // from filesys.h
+  lock_release(&file_system_lock);
+  return successful;
+}
+
+int read (int fd, void *buffer, unsigned size){
+  if (fd == 0) {
+    // Read from keyboard
+    unsigned i;
+    for (i = 0; i < size; i++) {
+      ((char *)buffer)[i] = input_getc();
+    }
+    return size;
+  } else {
+    // Read from file
+    struct file *f = thread_current()->file_list[fd];
+    if (f == NULL) {
+      return -1; // File not found
+    }
+
+    lock_acquire(&file_system_lock);
+    int bytes_read = file_read(f, buffer, size);
+    lock_release(&file_system_lock);
+
+    return bytes_read;
+  }
+}
+
+int filesize(int fd)
+{
+  struct file *f = thread_current()->file_list[fd];
+ 
+  lock_acquire(&file_system_lock);
+  int size = file_length(f);
+  lock_release(&file_system_lock);
+
+  return size;
+}
+
 /**
  * @brief implement all 13 syscalls here 
  * 
@@ -54,29 +109,63 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   /* 13 system calls handling*/
 
-
   switch(num_args){
     case 1:
     load_args(f,arg,1);
     switch(syscall_code){
-      
+
+      case SYS_CLOSE:
+        {
+          int file_descriptor= conv_vaddr_to_physaddr((const void*)arg[0]);
+          close(file_descriptor);
+          break;
+        }
+
+      case SYS_FILESIZE:
+        {
+          int fd=conv_vaddr_to_physaddr((const void*)arg[0]);
+          f->eax=filesize(fd);
+          break;
+        }
+        
     }
     break;
+
     case 2:
     load_args(f,arg,2);
     switch(syscall_code){
 
+      case SYS_CREATE:
+      {
+        verify_str_addr((const void*)arg[0]);
+        arg[1]= conv_vaddr_to_physaddr((const void*)arg[1]);
+        const char* file= (const char*)arg[0];
+        unsigned initial_size= arg[1];
+        f->eax=create(file,initial_size);
+        break;
+      }
     }
     break;
+
     case 3:
     load_args(f,arg,3);
     switch(syscall_code){
 
+      case SYS_READ:
+      {
+        arg[0]=conv_vaddr_to_physaddr((const void*)arg[0]);
+        arg[2]=conv_vaddr_to_physaddr((const void*)arg[2]);
+        verify_buffer((void*)arg[1],arg[2]);
+        int fd= arg[0];
+        void* buffer= (void*)arg[1];
+        unsigned size= arg[2];
+        f->eax=read(fd,buffer,size);
+        break;
+      }
 
     }
     break;
   }
-
 
   printf ("system call!\n");
   thread_exit ();
