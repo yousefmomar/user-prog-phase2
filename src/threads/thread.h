@@ -27,7 +27,7 @@ typedef int tid_t;
 
 struct child_process {
    int pid;
-   int load;
+   bool load_success;
    int exit_status;
 
    bool wait;
@@ -130,9 +130,6 @@ struct thread
 
     //strcut child process
     struct child_process *cp;
-
-    struct semaphore load_sema;    /* Synchronizes parent/child loading */
-    bool load_success;   
 
     struct file *executable; // used to deny writes to executable file
   };
