@@ -131,6 +131,9 @@ struct thread
     //strcut child process
     struct child_process *cp;
 
+    struct semaphore load_sema;    /* Synchronizes parent/child loading */
+    bool load_success;   
+
     struct file *executable; // used to deny writes to executable file
   };
 

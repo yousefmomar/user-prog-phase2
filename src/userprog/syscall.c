@@ -128,6 +128,47 @@ syscall_handler (struct intr_frame *f UNUSED)
           break;
         }
         
+       case SYS_EXEC:
+        {
+            // Verify the filename pointer is valid
+            verify_ptr((const void*)arg[0]);
+            verify_str_addr((const void*)arg[0]);
+
+            // Get physical address of filename
+            const char* file_name = (const char*)conv_vaddr_to_physaddr((const void*)arg[0]);
+            
+            // Execute process and store result in eax
+            tid_t tid = process_execute(file_name);
+
+            struct thread *child = thread_get_by_tid(tid);
+                if (child == NULL)
+                    f->eax = -1;
+                else {
+                    // Wait for child to finish loading
+                    sema_down(&child->cp->load_sema);
+                    
+                    // Check if load was successful
+                    if (child->cp->load_success)
+                        f->eax = tid;
+                    else
+                        f->eax = -1;
+                }
+                break;
+        }
+        
+        case SYS_REMOVE:
+        {
+            // Verify the filename pointer is valid
+            verify_ptr((const void*)arg[0]);
+            verify_str_addr((const void*)arg[0]);
+            
+            // Get physical address of filename
+            const char* file_name = (const char*)conv_vaddr_to_physaddr((const void*)arg[0]);
+            
+            // Remove file and store result in eax
+            f->eax = filesys_remove(file_name);
+            break;
+        }
     }
     break;
 
