@@ -14,6 +14,9 @@ static void verify_ptr(const void*vaddr);
 static void verify_str_addr(const void*str);
 static void verify_buffer(void* buffer,int size_buffer);
 
+struct file_descriptor *get_file_descriptor(int fd);
+struct file_descriptor *set_file_descriptor(struct file *file);
+
 struct lock file_system_lock;
 static int sys_write(int fd, const void *buffer, unsigned size);
 

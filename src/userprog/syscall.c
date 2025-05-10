@@ -1,8 +1,7 @@
 #include "userprog/syscall.h"
-#include "userprog/syscall.h"
 #include <stdio.h>
-#include "../filesys/file.h"
-#include "../filesys/filesys.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 #include <syscall-nr.h>
 // #include <vaddr.h>//ta2reban 8alat
 #include "threads/vaddr.h" //el sa7 maybe ?
@@ -12,10 +11,6 @@
 #include "filesys/file.h"
 #include "process.h"
 
-struct lock file_system_lock;
-{
-    /* data */
-};
 
 void syscall_init(void)
 {
@@ -50,12 +45,19 @@ static int syscall_num_args(int syscall_code)
 
 void close (int fd)
 {
-  struct file *f = thread_current()->file_list[fd];
+      struct file_descriptor* fdesc = get_file_descriptor(fd);
+      if (fdesc == NULL)
+          return -1;
+      struct file* f = fdesc->file;
   
       lock_acquire(&file_system_lock);
       file_close(f);
       lock_release(&file_system_lock);
-      thread_current()->file_list[fd] = NULL;
+
+
+      list_remove(&fdesc->elem);
+      free(fdesc);
+      // thread_current()->file_list[fd] = NULL;
 
 }
 
@@ -77,7 +79,12 @@ int read (int fd, void *buffer, unsigned size){
     return size;
   } else {
     // Read from file
-    struct file *f = thread_current()->file_list[fd];
+    // struct file *f = thread_current()->file_list[fd];
+    struct file_descriptor* fdesc = get_file_descriptor(fd);
+    if (fdesc == NULL)
+        return -1;
+    struct file* f = fdesc->file;
+
     if (f == NULL) {
       return -1; // File not found
     }
@@ -92,7 +99,12 @@ int read (int fd, void *buffer, unsigned size){
 
 int filesize(int fd)
 {
-  struct file *f = thread_current()->file_list[fd];
+  // struct file *f = thread_current()->file_list[fd];
+    struct file_descriptor* fdesc = get_file_descriptor(fd);
+    if (fdesc == NULL)
+        return -1;
+    struct file* f = fdesc->file;
+    
  
   lock_acquire(&file_system_lock);
   int size = file_length(f);
@@ -110,25 +122,24 @@ int open(const char *file)
   if (f == NULL)
       return -1;
 
-  struct thread *t = thread_current();
+    struct file_descriptor *fdesc = set_file_descriptor(f);
+    if (fdesc == NULL) {
+        file_close(f);
+        return -1;
+    }
 
-  for (int i = 2; i < 128; i++) // fd 0 & 1 are reserved for stdin/stdout
-  {  
-      if (t->file_list[i] == NULL) 
-      {
-          t->file_list[i] = f;
-          return i;
-      }
-  }
- 
-  file_close(f);  // No space in file_list
-  return -1;
+    return fdesc->fd;
 }
 
 
 void seek(int fd, unsigned position) 
 {
-  struct file *f = thread_current()->file_list[fd];
+  // struct file *f = thread_current()->file_list[fd];
+  struct file_descriptor* fdesc = get_file_descriptor(fd);
+  if (fdesc == NULL)
+      return -1;
+  struct file* f = fdesc->file;
+  
   if (f == NULL) return;
 
   lock_acquire(&file_system_lock);
@@ -138,7 +149,12 @@ void seek(int fd, unsigned position)
 
 unsigned tell(int fd) 
 {
-  struct file *f = thread_current()->file_list[fd];
+  // struct file *f = thread_current()->file_list[fd];
+  struct file_descriptor* fdesc = get_file_descriptor(fd);
+  if (fdesc == NULL)
+      return -1;
+  struct file* f = fdesc->file;
+  
   if (f == NULL) return -1;
 
   lock_acquire(&file_system_lock);
@@ -261,7 +277,7 @@ syscall_handler(struct intr_frame *f UNUSED)
         verify_ptr(arg_ptr); // Validate the pointer before dereferencing
 
         int exit_code = *(int *)arg_ptr;
-        thread_current()->exit_status = exit_code;
+        thread_current()->cp->exit_status = exit_code;
         process_exit(); // This function won't return
         break;
       }
@@ -426,6 +442,21 @@ struct file_descriptor *get_file_descriptor(int fd)
   }
 
   return NULL; // Return NULL if the file descriptor was not found
+}
+
+struct file_descriptor *set_file_descriptor(struct file *file) {
+  struct thread *cur = thread_current();
+  struct file_descriptor *fd = malloc(sizeof(struct file_descriptor));
+  
+  if (fd == NULL) {
+    return NULL;
+  }
+
+  fd->file = file;
+  fd->fd = cur->next_fd++;
+  list_push_back(&cur->file_list, &fd->elem);
+  
+  return fd;
 }
 
 static int sys_write(int fd, const void *buffer, unsigned size)
