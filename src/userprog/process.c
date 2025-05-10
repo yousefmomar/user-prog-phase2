@@ -120,7 +120,7 @@ void process_init(void)
 /* Search through child_list to find a specific child process by its thread ID
 	Returns NULL if child is not found
 	Used by process_wait and update_child_exit_status */
-static struct child_process *find_child_process(struct thread *parent, tid_t child_tid)
+struct child_process *find_child_process(struct thread *parent, tid_t child_tid)
 {
     struct list_elem *e;
     for (e = list_begin(&parent->child_list); e != list_end(&parent->child_list); e = list_next(e))

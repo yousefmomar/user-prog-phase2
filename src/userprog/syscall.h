@@ -19,9 +19,22 @@ void verify_str_addr(const void*str);
 void verify_buffer(void* buffer,int size_buffer);
 
 struct file_descriptor *get_file_descriptor(int fd);
-struct file_descriptor *set_file_descriptor(struct file *file);
+struct file_descriptor *set_file_descriptor(struct file *);
 
 struct lock file_system_lock;
+
+void halt(void);
+void exit(int status);
+tid_t exec(const char *cmd_line);
+int wait(tid_t pid);
+bool create(const char *file, unsigned initial_size);
+bool remove(const char *file);
+int open(const char *file);
+int filesize(int fd);
+int read(int fd, void *buffer, unsigned size);
 int sys_write(int fd, const void *buffer, unsigned size);
+void seek(int fd, unsigned position);
+unsigned tell(int fd);
+void close(int fd);
 
 #endif /* userprog/syscall.h */
