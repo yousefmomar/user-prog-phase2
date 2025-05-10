@@ -132,6 +132,10 @@ struct thread
     struct child_process *cp;
 
     struct file *executable; // used to deny writes to executable file
+
+
+    struct list child_list;          /* List of children */
+    struct child_status *wait_status;/* Status shared with parent */
   };
 
 /* If false (default), use round-robin scheduler.
