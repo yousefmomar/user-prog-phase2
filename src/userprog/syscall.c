@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/syscall.h"
 #include <stdio.h>
 #include "../filesys/file.h"
 #include "../filesys/filesys.h"
@@ -7,11 +8,14 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+struct lock file_system_lock;
+
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&file_system_lock);
 }
 static int syscall_num_args(int syscall_code){
   switch (syscall_code)
@@ -91,6 +95,52 @@ int filesize(int fd)
   return size;
 }
 
+int open(const char *file) 
+{
+  lock_acquire(&file_system_lock);
+  struct file *f = filesys_open(file);  
+  lock_release(&file_system_lock);
+
+  if (f == NULL)
+      return -1;
+
+  struct thread *t = thread_current();
+
+  for (int i = 2; i < 128; i++) // fd 0 & 1 are reserved for stdin/stdout
+  {  
+      if (t->file_list[i] == NULL) 
+      {
+          t->file_list[i] = f;
+          return i;
+      }
+  }
+ 
+  file_close(f);  // No space in file_list
+  return -1;
+}
+
+
+void seek(int fd, unsigned position) 
+{
+  struct file *f = thread_current()->file_list[fd];
+  if (f == NULL) return;
+
+  lock_acquire(&file_system_lock);
+  file_seek(f, position);
+  lock_release(&file_system_lock);
+}
+
+unsigned tell(int fd) 
+{
+  struct file *f = thread_current()->file_list[fd];
+  if (f == NULL) return -1;
+
+  lock_acquire(&file_system_lock);
+  unsigned pos = file_tell(f);
+  lock_release(&file_system_lock);
+
+  return pos;
+}
 /**
  * @brief implement all 13 syscalls here 
  * 
@@ -169,6 +219,20 @@ syscall_handler (struct intr_frame *f UNUSED)
             f->eax = filesys_remove(file_name);
             break;
         }
+      case SYS_OPEN:
+        {
+          verify_str_addr((const void*)arg[0]);
+          const char* filename = (const char*)arg[0];
+          f->eax = open(filename);
+          break;
+        }
+      case SYS_TELL:
+        {
+          int fd = arg[0];
+          f->eax = tell(fd);
+          break;
+        }
+        
     }
     break;
 
@@ -185,6 +249,13 @@ syscall_handler (struct intr_frame *f UNUSED)
         f->eax=create(file,initial_size);
         break;
       }
+      case SYS_SEEK:
+        {
+          int fd = arg[0];
+          unsigned position = arg[1];
+          seek(fd, position);
+          break;
+        }
     }
     break;
 
