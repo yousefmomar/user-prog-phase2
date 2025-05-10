@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include <syscall-nr.h>
@@ -8,8 +9,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
-#include "filesys/file.h"
 #include "process.h"
+#include "devices/input.h"
+#include "devices/shutdown.h"
 
 
 void syscall_init(void)
@@ -169,7 +171,7 @@ unsigned tell(int fd)
  *
  */
 
-static void
+void
 syscall_handler(struct intr_frame *f UNUSED)
 {
 
@@ -459,7 +461,7 @@ struct file_descriptor *set_file_descriptor(struct file *file) {
   return fd;
 }
 
-static int sys_write(int fd, const void *buffer, unsigned size)
+int sys_write(int fd, const void *buffer, unsigned size)
 {
   struct thread *cur = thread_current();
   struct file *file = NULL;
