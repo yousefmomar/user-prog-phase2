@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -12,7 +13,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #ifdef USERPROG
-#include "userprog/process.h"
 #endif
 
 /* Random value for struct thread's `magic' member.
@@ -332,6 +332,34 @@ void thread_exit(void)
 	NOT_REACHED();
 }
 
+////////////start of exit updates /////////////
+
+/**
+ * Returns the thread with the given thread ID, or a null pointer if no thread
+ * has that ID.
+ */
+struct thread *get_thread_by_tid(tid_t tid) {
+    struct thread *found_thread = NULL;
+    
+    /* Disable interrupts to prevent concurrent modifications to all_list */
+    enum intr_level old_level = intr_disable();
+    
+    struct list_elem *e;
+    for (e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
+        struct thread *t = list_entry(e, struct thread, allelem);
+        if (t->tid == tid) {
+            found_thread = t;
+            break;
+        }
+    }
+    
+    /* Restore interrupt level */
+    intr_set_level(old_level);
+    
+    return found_thread;
+}
+//////////////end of exit updates /////////////
+
 /* Yields the CPU.  The current thread is not put to sleep and
    may be scheduled again immediately at the scheduler's whim. */
 void thread_yield(void)
@@ -495,6 +523,10 @@ init_thread(struct thread *t, const char *name, int priority)
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);
 	intr_set_level(old_level);
+
+
+	list_init(&t->file_list);
+    t->next_fd = 3;  // Start after stdio descriptors
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

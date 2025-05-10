@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "filesys/file.h"
 #include "threads/synch.h"
 
 /* States in a thread's life cycle. */
@@ -40,6 +41,11 @@ struct child_process {
 
 };
 
+struct file_descriptor {
+    int fd;
+    struct file *file;
+    struct list_elem elem;
+};
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -123,6 +129,7 @@ struct thread
     //file system syscall and list of files accessed for this thread
     struct list file_list; // list of files
     int fd; // file descriptor
+    int next_fd;
 
     //child list processes for this thread
     struct list child_list;
@@ -134,8 +141,6 @@ struct thread
     struct file *executable; // used to deny writes to executable file
 
 
-    struct list child_list;          /* List of children */
-    struct child_status *wait_status;/* Status shared with parent */
   };
 
 /* If false (default), use round-robin scheduler.
@@ -173,5 +178,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+struct thread *get_thread_by_tid(tid_t tid);
 
 #endif /* threads/thread.h */

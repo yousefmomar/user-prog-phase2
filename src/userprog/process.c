@@ -120,19 +120,18 @@ void process_init(void)
 /* Search through child_list to find a specific child process by its thread ID
 	Returns NULL if child is not found
 	Used by process_wait and update_child_exit_status */
-static struct child_process *find_child_process(tid_t child_tid)
+static struct child_process *find_child_process(struct thread *parent, tid_t child_tid)
 {
-	struct list_elem *e;
-
-	// Iterate through all elements in the child list
-	for (e = list_begin(&child_list); e != list_end(&child_list); e = list_next(e))
-	{
-		struct child_process *cp = list_entry(e, struct child_process, elem);
-		if (cp->pid == child_tid)
-			return cp;
-	}
-	return NULL; // Child not found
+    struct list_elem *e;
+    for (e = list_begin(&parent->child_list); e != list_end(&parent->child_list); e = list_next(e))
+    {
+        struct child_process *cp = list_entry(e, struct child_process, elem);
+        if (cp->pid == child_tid)
+            return cp;
+    }
+    return NULL;
 }
+
 
 /* Create a new child process entry and add it to child_list
 	Called when a new process is created via process_execute
@@ -152,19 +151,7 @@ void add_child_process(tid_t child_tid)
 	}
 }
 
-/* Update a child process's exit status when it terminates
-	Called by process_exit when a child process exits
-	Signals waiting parent that child has finished */
-void update_child_exit_status(tid_t child_tid, int exit_code)
-{
-	struct child_process *cp = find_child_process(child_tid);
-	if (cp != NULL)
-	{
-		cp->exit_status = exit_code; // Store exit code
-		cp->exit = true;			 // Mark as exited
-		sema_up(&cp->exit_sema);	 // Wake up waiting parent if any
-	}
-}
+
 
 /* Check if a given thread ID represents a child process of the current process
 	Returns true if the thread ID belongs to a direct child of the current process,
@@ -198,7 +185,7 @@ static bool is_child_process(struct thread *parent, tid_t child_tid)
 int process_wait(tid_t child_tid)
 {
 	struct thread *cur = thread_current();
-	struct child_process *cp = find_child_process(child_tid);
+	struct child_process *cp = find_child_process(cur, child_tid);
 
 	// Validate child process
 	if (cp == NULL || cp->wait || !is_child_process(cur, child_tid))
@@ -223,29 +210,87 @@ int process_wait(tid_t child_tid)
 //////////========= NEW ==========///////////
 /////////////////////////////////////////////
 
+///////////////////start of exit updates/////////////////////////
 /* Free the current process's resources. */
 void process_exit(void)
 {
-	struct thread *cur = thread_current();
-	uint32_t *pd;
+    struct thread *cur = thread_current();
+    uint32_t *pd = cur->pagedir;
 
-	/* Destroy the current process's page directory and switch back
-	 to the kernel-only page directory. */
-	pd = cur->pagedir;
-	if (pd != NULL)
+    /* Print termination message */
+    printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+
+    /* If parent is still alive, notify parent */
+    if (cur->parent_tid != TID_ERROR)
+    {
+        struct thread *parent = get_thread_by_tid(cur->parent_tid);
+        if (parent != NULL)
+        {
+            struct child_process *cp = find_child_process(parent, cur->tid);
+            if (cp != NULL)
+            {
+                cp->exit_status = cur->exit_status;
+                cp->exit = true;
+                sema_up(&cp->exit_sema); // Notify parent
+            }
+        }
+    }
+
+    /* Close all open files */
+    struct list_elem *e;
+    while (!list_empty(&cur->file_list))
+    {
+        e = list_pop_front(&cur->file_list);
+        struct file_descriptor *fd = list_entry(e, struct file_descriptor, elem);
+        file_close(fd->file);
+        free(fd);
+    }
+
+    /* Close running executable */
+    if (cur->executable != NULL)
+    {
+        file_allow_write(cur->executable);
+        file_close(cur->executable);
+    }
+
+    /* Clean up child_list (free all child_process structs) */
+    while (!list_empty(&cur->child_list))
+    {
+        e = list_pop_front(&cur->child_list);
+        struct child_process *cp = list_entry(e, struct child_process, elem);
+        free(cp);
+    }
+
+    /* Destroy page directory */
+    if (pd != NULL)
+    {
+        cur->pagedir = NULL;
+        pagedir_activate(NULL);
+        pagedir_destroy(pd);
+    }
+
+    thread_exit(); // Terminate thread
+}
+
+/* Update a child process's exit status when it terminates
+	Called by process_exit when a child process exits
+	Signals waiting parent that child has finished */
+void update_child_exit_status(tid_t child_tid, int exit_code)
+{
+	struct child_process *cp = find_child_process(thread_current(), child_tid);
+	if (cp != NULL)
 	{
-		/* Correct ordering here is crucial.  We must set
-		 cur->pagedir to NULL before switching page directories,
-		 so that a timer interrupt can't switch back to the
-		 process page directory.  We must activate the base page
-		 directory before destroying the process's page
-		 directory, or our active page directory will be one
-		 that's been freed (and cleared). */
-		cur->pagedir = NULL;
-		pagedir_activate(NULL);
-		pagedir_destroy(pd);
+		ASSERT(cp != NULL);
+		cp->exit_status = exit_code; // Store exit code
+		cp->exit = true;			 // Mark as exited
+		sema_up(&cp->exit_sema);	 // Wake up waiting parent if any
+	}
+	else
+	{
+		PANIC("No child process found with tid %d", child_tid);
 	}
 }
+////////////////end of exit updates/////////////////////////
 
 /* Sets up the CPU for running user code in the current
    thread.
