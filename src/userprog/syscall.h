@@ -14,4 +14,6 @@ static void verify_ptr(const void*vaddr);
 static void verify_str_addr(const void*str);
 static void verify_buffer(void* buffer,int size_buffer);
 
+static int sys_write(int fd, const void *buffer, unsigned size);
+
 #endif /* userprog/syscall.h */

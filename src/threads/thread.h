@@ -4,6 +4,8 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "filesys/file.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -139,8 +141,12 @@ struct thread
     struct file *executable; // used to deny writes to executable file
 
 
-    struct list child_list;          /* List of children */
     struct child_status *wait_status;/* Status shared with parent */
+
+    //exit call updates
+    int exit_status;
+    bool exited;
+
   };
 
 /* If false (default), use round-robin scheduler.
@@ -178,5 +184,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+struct thread *get_thread_by_tid(tid_t tid);
 
 #endif /* threads/thread.h */
