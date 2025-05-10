@@ -302,7 +302,7 @@ void thread_exit(void)
 		
 		// Convert the list element to a child_process structure
 		// This gives us access to the child process data
-		struct child_status *cp = list_entry(e, struct child_process, elem);
+		struct child_process *cp = list_entry(e, struct child_process, elem);
 		
 		// Free the memory allocated for the child process status
 		// This prevents memory leaks
@@ -312,11 +312,21 @@ void thread_exit(void)
 	//////////////////////==== NEW ====///////////////////////////
 	//////////////////////////////////////////////////////////////
 
-	// Update parent if waiting
-	if (cur->wait_status != NULL)
-	{
-		update_child_exit_status(cur->tid, cur->cp->exit_status);
-	}
+	// Notify parent if it's waiting
+    if (cur->parent_tid != TID_ERROR)
+    {
+        struct thread *parent = get_thread_by_tid(cur->parent_tid);
+        if (parent != NULL)
+        {
+            struct child_process *cp = find_child_process(parent, cur->tid);
+            if (cp != NULL)
+            {
+                cp->exit_status = cur->cp->exit_status;  // Use thread's exit status directly
+                cp->exit = true;
+                sema_up(&cp->exit_sema);
+            }
+        }
+    }
 
 #ifdef USERPROG
 	process_exit();

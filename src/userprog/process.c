@@ -218,7 +218,7 @@ void process_exit(void)
     uint32_t *pd = cur->pagedir;
 
     /* Print termination message */
-    printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+    printf("%s: exit(%d)\n", cur->name, cur->cp->exit_status);
 
     /* If parent is still alive, notify parent */
     if (cur->parent_tid != TID_ERROR)
@@ -229,7 +229,7 @@ void process_exit(void)
             struct child_process *cp = find_child_process(parent, cur->tid);
             if (cp != NULL)
             {
-                cp->exit_status = cur->exit_status;
+                cp->exit_status = cur->cp->exit_status;
                 cp->exit = true;
                 sema_up(&cp->exit_sema); // Notify parent
             }
