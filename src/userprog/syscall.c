@@ -64,7 +64,7 @@ void halt(void) {
 }
 
 void exit(int status) {
-  struct thread *cur = thread_current();
+  struct thread *cur = thread_current()->cp;
   if (cur->cp != NULL) {
     cur->cp->exit_status = status;
   }

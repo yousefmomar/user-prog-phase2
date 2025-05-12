@@ -33,9 +33,12 @@ struct child_process {
 
    bool wait;
    bool exit;
+   bool orphan;
 
    struct semaphore load_sema;
    struct semaphore exit_sema;
+
+   struct thread *parent_thread; // parent thread
 
    struct list_elem elem; // list element for child process list 
 

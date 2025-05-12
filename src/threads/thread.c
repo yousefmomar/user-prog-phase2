@@ -288,47 +288,6 @@ void thread_exit(void)
 {
 	ASSERT(!intr_context());
 
-	//////////////////////////////////////////////////////////////
-	//////////////////////==== NEW ====///////////////////////////
-	//////////////////////////////////////////////////////////////
-	// Get the current running thread
-	struct thread *cur = thread_current();
-
-	// Clean up the list of child processes for this thread
-	// Keep going until the child list is completely empty
-	while (!list_empty(&cur->child_list)) 
-	{
-		// Remove the first element from the child list
-		struct list_elem *e = list_pop_front(&cur->child_list);
-		
-		// Convert the list element to a child_process structure
-		// This gives us access to the child process data
-		struct child_process *cp = list_entry(e, struct child_process, elem);
-		
-		// Free the memory allocated for the child process status
-		// This prevents memory leaks
-		free(cp);
-	}
-	//////////////////////////////////////////////////////////////
-	//////////////////////==== NEW ====///////////////////////////
-	//////////////////////////////////////////////////////////////
-
-	// Notify parent if it's waiting
-    if (cur->parent_tid != TID_ERROR)
-    {
-        struct thread *parent = get_thread_by_tid(cur->parent_tid);
-        if (parent != NULL)
-        {
-            struct child_process *cp = find_child_process(parent, cur->tid);
-            if (cp != NULL)
-            {
-                cp->exit_status = cur->cp->exit_status;  // Use thread's exit status directly
-                cp->exit = true;
-                sema_up(&cp->exit_sema);
-            }
-        }
-    }
-
 #ifdef USERPROG
 	process_exit();
 #endif
