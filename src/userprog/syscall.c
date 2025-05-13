@@ -73,25 +73,72 @@ void exit(int status) {
 }
 
 tid_t exec(const char *cmd_line) {
-  verify_ptr((const void*)cmd_line);
-  verify_str_addr((const void*)cmd_line);
+    // Check for NULL pointer
+    if (cmd_line == NULL) {
+        exit(-1);
+    }
+
+    // Basic pointer validation - is it in user space?
+    if (!is_user_vaddr(cmd_line)) {
+        exit(-1);
+    }
+
+    // Make a copy of the command line in kernel memory
+    char *cmd_copy = palloc_get_page(0);
+    if (cmd_copy == NULL) {
+        return -1;
+    }
+    
+    // Safely copy string from user space to kernel space
+    // We'll validate each character as we copy
+    int i;
+    for (i = 0; i < PGSIZE - 1; i++) {
+        // Get and validate each character's address
+        void *ptr = (void *)(cmd_line + i);
+        if (!is_user_vaddr(ptr) || pagedir_get_page(thread_current()->pagedir, ptr) == NULL) {
+            palloc_free_page(cmd_copy);
+            exit(-1);
+        }
+        
+        // Copy the character
+        cmd_copy[i] = *(char *)ptr;
+        
+        // If we've reached the end of the string, break
+        if (cmd_copy[i] == '\0') {
+            break;
+        }
+    }
+    
+    // Ensure null termination in case we hit PGSIZE limit
+    cmd_copy[i] = '\0';
   
-  tid_t tid = process_execute(cmd_line);
-  if (tid == TID_ERROR) {
-    return -1;
-  }
-
-  struct thread *child = get_thread_by_tid(tid);
-  if (child == NULL) {
-    return -1;
-  }
-
-  sema_down(&child->cp->load_sema);
-  if (!child->cp->load_success) {
-    return -1;
-  }
-
-  return tid;
+    // Execute the process
+    tid_t tid = process_execute(cmd_copy);
+    
+    if (tid == TID_ERROR) {
+        palloc_free_page(cmd_copy);
+        return -1;
+    }
+    
+    // Find the child process using the function you've defined
+    struct child_process *cp = find_child_process(thread_current(), tid);
+    if (cp == NULL) {
+        palloc_free_page(cmd_copy);
+        return -1;
+    }
+    
+    // Wait for child to load using the semaphore
+    sema_down(&cp->load_sema);
+    
+    // Free the command line copy
+    palloc_free_page(cmd_copy);
+    
+    // Check if load was successful
+    if (!cp->load_success) {
+        return -1;
+    }
+    
+    return tid;
 }
 
 int wait(tid_t pid) {
@@ -164,6 +211,15 @@ void close(int fd) {
 }
 
 int read(int fd, void *buffer, unsigned size) {
+
+  if (buffer == NULL) {
+    exit(-1);
+  }
+  
+  // Validate the entire buffer
+  verify_buffer((void *)buffer, size);
+  
+
   if (fd == 0) {
     unsigned i;
     for (i = 0; i < size; i++) {
@@ -365,13 +421,23 @@ void verify_str_addr(const void *str)
 
 void verify_buffer(void *buffer, int size_buffer)
 {
-  int i = 0;
+  if (buffer == NULL) {
+    exit(-1);
+  }
 
-  char *temp = (char *)buffer;
-  while (i < size_buffer)
-  {
-    verify_ptr((const void *)temp++);
-    i++;
+  // Check each page the buffer spans
+  char *start = (char *)buffer;
+  char *end = start + size_buffer;
+  
+  // Verify first and last byte of buffer
+  verify_ptr(start);
+  verify_ptr(end - 1);
+  
+  // If buffer spans multiple pages, verify each page boundary
+  char *page = (char *)pg_round_down(start + PGSIZE);
+  while (page < end) {
+    verify_ptr(page);
+    page += PGSIZE;
   }
 }
 
@@ -409,6 +475,14 @@ struct file_descriptor *set_file_descriptor(struct file *file) {
 
 int sys_write(int fd, const void *buffer, unsigned size)
 {
+  if (buffer == NULL) {
+    exit(-1);
+  }
+  
+  // Validate the entire buffer
+  verify_buffer((void *)buffer, size);
+  
+
   struct thread *cur = thread_current();
   struct file *file = NULL;
   int bytes_written = -1;
