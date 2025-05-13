@@ -64,11 +64,11 @@ void halt(void) {
 }
 
 void exit(int status) {
-  struct thread *cur = thread_current()->cp;
+  struct thread *cur = thread_current();
   if (cur->cp != NULL) {
     cur->cp->exit_status = status;
   }
-  printf("%s: exit(%d)\n", cur->name, status);
+  printf("%s: exit(%d)\n", thread_current()->name, status);
   thread_exit();
 }
 
@@ -234,6 +234,12 @@ unsigned tell(int fd)
 
 void syscall_handler(struct intr_frame *f)
 {
+  if (!is_user_vaddr(f->esp) || f->esp >= PHYS_BASE) {
+      exit(-1);
+  }
+
+  verify_ptr(f->esp);
+
   int arg[3];
   int esp = conv_vaddr_to_physaddr((const void *)f->esp);
   int syscall_code = *(int *)esp;
@@ -338,9 +344,15 @@ void load_args(struct intr_frame *f, int *arg, int arg_count)
 
 void verify_ptr(const void *vaddr)
 {
-  if (vaddr < (void *)0x08048000 || vaddr > (void *)PHYS_BASE)
-  {
+  if (vaddr == NULL) {
     exit(-1);
+  }
+
+  if (!is_user_vaddr(vaddr) || 
+      vaddr < (void *)0x08048000 || 
+      vaddr >= PHYS_BASE ||
+      pagedir_get_page(thread_current()->pagedir, vaddr) == NULL) {
+      exit(-1);
   }
 }
 

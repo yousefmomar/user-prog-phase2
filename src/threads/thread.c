@@ -171,8 +171,6 @@ tid_t thread_create(const char *name, int priority,
 
 	ASSERT(function != NULL);
 
-	// Initialize child list
-	list_init(&t->child_list);
 
 	/* Allocate thread. */
 	t = palloc_get_page(PAL_ZERO);
@@ -182,6 +180,9 @@ tid_t thread_create(const char *name, int priority,
 	/* Initialize thread. */
 	init_thread(t, name, priority);
 	tid = t->tid = allocate_tid();
+
+	// Initialize child list
+	list_init(&t->child_list);
 
 	/* Prepare thread for first run by initializing its stack.
 	 Do this atomically so intermediate values for the 'stack'
@@ -203,8 +204,22 @@ tid_t thread_create(const char *name, int priority,
 	sf->eip = switch_entry;
 	sf->ebp = 0;
 
-	sema_init(&t->cp->load_sema, 0);
-	t->cp->load_success = false;
+	// Initialize child process fields
+    t->cp = malloc(sizeof(struct child_process));
+    if (t->cp != NULL) {
+        t->cp->pid = tid;
+        t->cp->exit_status = -1;
+        t->cp->wait = false;
+        t->cp->exit = false;
+        sema_init(&t->cp->load_sema, 0);
+        sema_init(&t->cp->exit_sema, 0);
+        
+        /* Add to parent's child list */
+        if (t->parent_tid != NULL) {
+			struct thread *parent_thread = get_thread_by_tid(t->parent_tid);
+            list_push_back(&parent_thread->child_list, &t->cp->elem);
+        }
+    }
 
 	intr_set_level (old_level);
 
@@ -490,13 +505,18 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
+	list_init(&t->file_list);
+    t->next_fd = 3;  // Start after stdio descriptors
+
+	list_init(&t->child_list);  // Initialize chil	d list
+    t->parent_tid = running_thread()->tid; // Set parent thread
+    t->cp = NULL;  // Initialize child process pointer
+
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);
 	intr_set_level(old_level);
 
 
-	list_init(&t->file_list);
-    t->next_fd = 3;  // Start after stdio descriptors
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

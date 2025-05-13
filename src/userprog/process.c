@@ -122,14 +122,21 @@ void process_init(void)
 	Used by process_wait and update_child_exit_status */
 struct child_process *find_child_process(struct thread *parent, tid_t child_tid)
 {
-	struct list_elem *e;
-	for (e = list_begin(&parent->child_list); e != list_end(&parent->child_list); e = list_next(e))
-	{
-		struct child_process *cp = list_entry(e, struct child_process, elem);
-		if (cp->pid == child_tid)
-			return cp;
-	}
-	return NULL;
+    if (parent == NULL) {
+        return NULL;
+    }
+
+    struct list_elem *e;
+    for (e = list_begin(&parent->child_list); 
+         e != list_end(&parent->child_list); 
+         e = list_next(e)) 
+    {
+        struct child_process *cp = list_entry(e, struct child_process, elem);
+        if (cp != NULL && cp->pid == child_tid) {
+            return cp;
+        }
+    }
+    return NULL;
 }
 
 /* Create a new child process entry and add it to child_list
@@ -181,26 +188,37 @@ static bool is_child_process(struct thread *parent, tid_t child_tid)
 	- child_tid is invalid */
 int process_wait(tid_t child_tid)
 {
-	struct thread *cur = thread_current();
-	struct child_process *cp = find_child_process(cur, child_tid);
+    struct thread *cur = thread_current();
+    struct child_process *cp;
 
-	// Validate child process
-	if (cp == NULL || cp->wait || !is_child_process(cur, child_tid))
-		return -1;
+    // Validate input
+    if (child_tid == TID_ERROR) {
+        return -1;
+    }
 
-	cp->wait = true; // Mark that we're waiting on this child
+    // Find child process
+    cp = find_child_process(cur, child_tid);
+    if (cp == NULL) {
+        return -1;
+    }
 
-	// If child hasn't exited yet, wait for it
-	if (!cp->exit)
-		sema_down(&cp->exit_sema);
+    // Check if already waited on
+    if (cp->wait) {
+        return -1;
+    }
+    cp->wait = true;
 
-	int status = cp->exit_status; // Get child's exit status
+    // Wait for child to exit if it hasn't already
+    if (!cp->exit) {
+        sema_down(&cp->exit_sema);
+    }
 
-	// Cleanup: remove child from list and free its memory
-	list_remove(&cp->elem);
-	free(cp);
+    // Get exit status and cleanup
+    int status = cp->exit_status;
+    list_remove(&cp->elem);
+    free(cp);
 
-	return status;
+    return status;
 }
 
 /////////////////////////////////////////////
@@ -214,11 +232,6 @@ void process_exit(void)
 	struct thread *cur = thread_current();
 	uint32_t *pd = cur->pagedir;
 
-	// if (cur->cp != NULL)
-	// {
-	// 	/* Print exit status message */
-	// 	printf("%s: exit(%d)\n", cur->name, cur->cp->exit_status);
-	// }
 
 	/* Close executable file first */
 	if (cur->executable)
@@ -232,35 +245,37 @@ void process_exit(void)
 	struct list *file_list = &cur->file_list;
 	while (!list_empty(file_list))
 	{
-		struct list_elem *e = list_pop_front(file_list);
+		struct list_elem *e = list_begin(file_list);
 		struct file_descriptor *fd = list_entry(e, struct file_descriptor, elem);
 		if (fd != NULL)
 		{
+			list_remove(&fd->elem);
 			file_close(fd->file);
 			free(fd);
 		}
 	}
 
-	/* Release all held locks */
-	struct list *lock_list = &cur->lock_list;
-	while (!list_empty(lock_list))
-	{
-		struct list_elem *e = list_pop_front(lock_list);
-		struct lock *l = list_entry(e, struct lock, elem);
-		if (l != NULL)
-		{
-			lock_release(l);
-		}
-	}
+	// /* Release all held locks */
+	// struct list *lock_list = &cur->lock_list;
+	// while (!list_empty(lock_list))
+	// {
+	// 	struct list_elem *e = list_pop_front(lock_list);
+	// 	struct lock *l = list_entry(e, struct lock, elem);
+	// 	if (l != NULL)
+	// 	{
+	// 		lock_release(l);
+	// 	}
+	// }
 
 	/* Handle child processes */
 	struct list *child_list = &cur->child_list;
 	while (!list_empty(child_list))
 	{
-		struct list_elem *e = list_pop_front(child_list);
+		struct list_elem *e = list_begin(child_list);
 		struct child_process *cp = list_entry(e, struct child_process, elem);
 		if (cp != NULL)
 		{
+			list_remove(&cp->elem);  // Remove before handling
 			if (cp->exit)
 			{
 				free(cp);
@@ -282,6 +297,7 @@ void process_exit(void)
 
 		if (cur_orphan)
 		{
+			list_remove(&cur->cp->elem);
 			free(cur->cp);
 		}
 	}
