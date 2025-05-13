@@ -344,88 +344,149 @@ struct Elf32_Ehdr
 	Elf32_Half e_shstrndx;
 };
 
-goto done;
-}
-file_deny_write(file);
-
-/* Read and verify executable header. */
-if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
+/* Program header.  See [ELF1] 2-2 to 2-4.
+   There are e_phnum of these, starting at file offset e_phoff
+   (see [ELF1] 1-6). */
+struct Elf32_Phdr
 {
-	printf("load: %s: error loading executable\n", file_name);
-	goto done;
-}
+	Elf32_Word p_type;
+	Elf32_Off p_offset;
+	Elf32_Addr p_vaddr;
+	Elf32_Addr p_paddr;
+	Elf32_Word p_filesz;
+	Elf32_Word p_memsz;
+	Elf32_Word p_flags;
+	Elf32_Word p_align;
+};
 
-/* Read program headers. */
-file_ofs = ehdr.e_phoff;
-for (i = 0; i < ehdr.e_phnum; i++)
+/* Values for p_type.  See [ELF1] 2-3. */
+#define PT_NULL 0			/* Ignore. */
+#define PT_LOAD 1			/* Loadable segment. */
+#define PT_DYNAMIC 2		/* Dynamic linking info. */
+#define PT_INTERP 3			/* Name of dynamic loader. */
+#define PT_NOTE 4			/* Auxiliary info. */
+#define PT_SHLIB 5			/* Reserved. */
+#define PT_PHDR 6			/* Program header table. */
+#define PT_STACK 0x6474e551 /* Stack segment. */
+
+/* Flags for p_flags.  See [ELF3] 2-3 and 2-4. */
+#define PF_X 1 /* Executable. */
+#define PF_W 2 /* Writable. */
+#define PF_R 4 /* Readable. */
+
+/* redefined setup_stack to take save_ptr as argument */
+static bool setup_stack(void **esp, const char *file_name, char **save_ptr);
+static bool validate_segment(const struct Elf32_Phdr *, struct file *);
+static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
+						 uint32_t read_bytes, uint32_t zero_bytes,
+						 bool writable);
+
+/* Loads an ELF executable from FILE_NAME into the current thread.
+   Stores the executable's entry point into *EIP
+   and its initial stack pointer into *ESP.
+   Returns true if successful, false otherwise. */
+bool load(const char *file_name, void (**eip)(void), void **esp, char **save_ptr)
 {
-	struct Elf32_Phdr phdr;
+	struct thread *t = thread_current();
+	struct Elf32_Ehdr ehdr;
+	struct file *file = NULL;
+	off_t file_ofs;
+	bool success = false;
+	int i;
 
-	if (file_ofs < 0 || file_ofs > file_length(file))
+	/* Allocate and activate page directory. */
+	t->pagedir = pagedir_create();
+	if (t->pagedir == NULL)
 		goto done;
-	file_seek(file, file_ofs);
+	process_activate();
 
-	if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
-		goto done;
-	file_ofs += sizeof phdr;
-	switch (phdr.p_type)
+	/* Open executable file. */
+	file = filesys_open(file_name);
+	if (file == NULL)
 	{
-	case PT_NULL:
-	case PT_NOTE:
-	case PT_PHDR:
-	case PT_STACK:
-	default:
-		/* Ignore this segment. */
-		break;
-	case PT_DYNAMIC:
-	case PT_INTERP:
-	case PT_SHLIB:
+		printf("load: %s: open failed\n", file_name);
 		goto done;
-	case PT_LOAD:
-		if (validate_segment(&phdr, file))
+	}
+	file_deny_write(file);
+
+	/* Read and verify executable header. */
+	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
+	{
+		printf("load: %s: error loading executable\n", file_name);
+		goto done;
+	}
+
+	/* Read program headers. */
+	file_ofs = ehdr.e_phoff;
+	for (i = 0; i < ehdr.e_phnum; i++)
+	{
+		struct Elf32_Phdr phdr;
+
+		if (file_ofs < 0 || file_ofs > file_length(file))
+			goto done;
+		file_seek(file, file_ofs);
+
+		if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
+			goto done;
+		file_ofs += sizeof phdr;
+		switch (phdr.p_type)
 		{
-			bool writable = (phdr.p_flags & PF_W) != 0;
-			uint32_t file_page = phdr.p_offset & ~PGMASK;
-			uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
-			uint32_t page_offset = phdr.p_vaddr & PGMASK;
-			uint32_t read_bytes, zero_bytes;
-			if (phdr.p_filesz > 0)
+		case PT_NULL:
+		case PT_NOTE:
+		case PT_PHDR:
+		case PT_STACK:
+		default:
+			/* Ignore this segment. */
+			break;
+		case PT_DYNAMIC:
+		case PT_INTERP:
+		case PT_SHLIB:
+			goto done;
+		case PT_LOAD:
+			if (validate_segment(&phdr, file))
 			{
-				/* Normal segment.
-				 Read initial part from disk and zero the rest. */
-				read_bytes = page_offset + phdr.p_filesz;
-				zero_bytes = (ROUND_UP(page_offset + phdr.p_memsz, PGSIZE) - read_bytes);
+				bool writable = (phdr.p_flags & PF_W) != 0;
+				uint32_t file_page = phdr.p_offset & ~PGMASK;
+				uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
+				uint32_t page_offset = phdr.p_vaddr & PGMASK;
+				uint32_t read_bytes, zero_bytes;
+				if (phdr.p_filesz > 0)
+				{
+					/* Normal segment.
+					 Read initial part from disk and zero the rest. */
+					read_bytes = page_offset + phdr.p_filesz;
+					zero_bytes = (ROUND_UP(page_offset + phdr.p_memsz, PGSIZE) - read_bytes);
+				}
+				else
+				{
+					/* Entirely zero.
+					 Don't read anything from disk. */
+					read_bytes = 0;
+					zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
+				}
+				if (!load_segment(file, file_page, (void *)mem_page,
+								  read_bytes, zero_bytes, writable))
+					goto done;
 			}
 			else
-			{
-				/* Entirely zero.
-				 Don't read anything from disk. */
-				read_bytes = 0;
-				zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
-			}
-			if (!load_segment(file, file_page, (void *)mem_page,
-							  read_bytes, zero_bytes, writable))
 				goto done;
+			break;
 		}
-		else
-			goto done;
-		break;
 	}
-}
 
-/* Set up stack. */
-if (!setup_stack(esp, file_name, save_ptr))
-	goto done;
+	/* Set up stack. */
+	if (!setup_stack(esp, file_name, save_ptr))
+		goto done;
 
-/* Start address. */
-*eip = (void (*)(void))ehdr.e_entry;
+	/* Start address. */
+	*eip = (void (*)(void))ehdr.e_entry;
 
-success = true;
+	success = true;
 
-done :
+done:
 	/* We arrive here whether the load is successful or not. */
 	file_close(file);
-return success;
+	return success;
 }
 
 /* load() helpers. */
