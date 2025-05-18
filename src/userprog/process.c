@@ -122,21 +122,23 @@ void process_init(void)
 	Used by process_wait and update_child_exit_status */
 struct child_process *find_child_process(struct thread *parent, tid_t child_tid)
 {
-    if (parent == NULL) {
-        return NULL;
-    }
+	if (parent == NULL)
+	{
+		return NULL;
+	}
 
-    struct list_elem *e;
-    for (e = list_begin(&parent->child_list); 
-         e != list_end(&parent->child_list); 
-         e = list_next(e)) 
-    {
-        struct child_process *cp = list_entry(e, struct child_process, elem);
-        if (cp != NULL && cp->pid == child_tid) {
-            return cp;
-        }
-    }
-    return NULL;
+	struct list_elem *e;
+	for (e = list_begin(&parent->child_list);
+		 e != list_end(&parent->child_list);
+		 e = list_next(e))
+	{
+		struct child_process *cp = list_entry(e, struct child_process, elem);
+		if (cp != NULL && cp->pid == child_tid)
+		{
+			return cp;
+		}
+	}
+	return NULL;
 }
 
 /* Create a new child process entry and add it to child_list
@@ -188,37 +190,41 @@ static bool is_child_process(struct thread *parent, tid_t child_tid)
 	- child_tid is invalid */
 int process_wait(tid_t child_tid)
 {
-    struct thread *cur = thread_current();
-    struct child_process *cp;
+	struct thread *cur = thread_current();
+	struct child_process *cp;
 
-    // Validate input
-    if (child_tid == TID_ERROR) {
-        return -1;
-    }
+	// Validate input
+	if (child_tid == TID_ERROR)
+	{
+		return -1;
+	}
 
-    // Find child process
-    cp = find_child_process(cur, child_tid);
-    if (cp == NULL) {
-        return -1;
-    }
+	// Find child process
+	cp = find_child_process(cur, child_tid);
+	if (cp == NULL)
+	{
+		return -1;
+	}
 
-    // Check if already waited on
-    if (cp->wait) {
-        return -1;
-    }
-    cp->wait = true;
+	// Check if already waited on
+	if (cp->wait)
+	{
+		return -1;
+	}
+	cp->wait = true;
 
-    // Wait for child to exit if it hasn't already
-    if (!cp->exit) {
-        sema_down(&cp->exit_sema);
-    }
+	// Wait for child to exit if it hasn't already
+	if (!cp->exit)
+	{
+		sema_down(&cp->exit_sema);
+	}
 
-    // Get exit status and cleanup
-    int status = cp->exit_status;
-    list_remove(&cp->elem);
-    free(cp);
+	// Get exit status and cleanup
+	int status = cp->exit_status;
+	list_remove(&cp->elem);
+	free(cp);
 
-    return status;
+	return status;
 }
 
 /////////////////////////////////////////////
@@ -231,7 +237,6 @@ void process_exit(void)
 {
 	struct thread *cur = thread_current();
 	uint32_t *pd = cur->pagedir;
-
 
 	/* Close executable file first */
 	if (cur->executable)
@@ -276,7 +281,7 @@ void process_exit(void)
 		struct child_process *cp = list_entry(e, struct child_process, elem);
 		if (cp != NULL)
 		{
-			list_remove(&cp->elem);  // Remove before handling
+			list_remove(&cp->elem); // Remove before handling
 			if (cp->exit)
 			{
 				free(cp);
@@ -294,12 +299,16 @@ void process_exit(void)
 	{
 		cur->cp->exit = true;
 		bool cur_orphan = cur->cp->orphan;
-		sema_up(&cur->cp->exit_sema);
+		// sema_up(&cur->cp->exit_sema);
 
 		if (cur_orphan)
 		{
 			list_remove(&cur->cp->elem);
 			free(cur->cp);
+		}
+		else
+		{
+			sema_up(&cur->cp->exit_sema);
 		}
 	}
 
