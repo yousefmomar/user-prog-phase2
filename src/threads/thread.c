@@ -92,6 +92,7 @@ void thread_init(void)
 	lock_init(&tid_lock);
 	list_init(&ready_list);
 	list_init(&all_list);
+	
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread();
@@ -307,6 +308,19 @@ void thread_exit(void)
 	process_exit();
 #endif
 
+	struct thread *curr = thread_current();
+
+  // release all locks
+  while (!list_empty(&curr->lock_list)) 
+    {
+        struct list_elem *e = list_pop_front(&curr->lock_list);
+        struct lock *lock = list_entry(e, struct lock, elem);
+        if (lock->holder == curr)  // Only release if we hold it
+        {
+            lock_release(lock);
+        }
+    }
+
 	/* Remove thread from all threads list, set our status to dying,
 	 and schedule another process.  That process will destroy us
 	 when it calls thread_schedule_tail(). */
@@ -511,6 +525,8 @@ init_thread(struct thread *t, const char *name, int priority)
 	list_init(&t->child_list);  // Initialize chil	d list
     t->parent_tid = running_thread()->tid; // Set parent thread
     t->cp = NULL;  // Initialize child process pointer
+
+	list_init(&t->lock_list); // Initialize lock list
 
 	old_level = intr_disable();
 	list_push_back(&all_list, &t->allelem);

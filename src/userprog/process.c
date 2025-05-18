@@ -255,14 +255,15 @@ void process_exit(void)
 		}
 	}
 
-	// /* Release all held locks */
+	/* Release all held locks */
 	// struct list *lock_list = &cur->lock_list;
 	// while (!list_empty(lock_list))
 	// {
-	// 	struct list_elem *e = list_pop_front(lock_list);
+	// 	struct list_elem *e = list_begin(lock_list);
 	// 	struct lock *l = list_entry(e, struct lock, elem);
 	// 	if (l != NULL)
 	// 	{
+	// 		list_remove(&l->elem);
 	// 		lock_release(l);
 	// 	}
 	// }
